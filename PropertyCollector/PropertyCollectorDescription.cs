@@ -146,11 +146,7 @@ namespace PropertyCollector
                 tree = CSharpSyntaxTree.ParseText(SourceText.From(stream), path: typeFilePath);
             }
 
-            //Only collect Properties from the class of the Properties which are inside propertyDictionary.
-            string startClassName = propertyDictionary.Values.First().PropertyClassName;
-            //Get code snippet of the class from the .cs-File
-            string codeSnippet = tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().Where(n => n.Identifier.ValueText == startClassName).First().ToString();
-            var root = CSharpSyntaxTree.ParseText(codeSnippet).GetRoot();
+            var root = tree.GetRoot();
 
             //Collect all property descriptions:
             var walker = new PropertyWalker(propertyDictionary);

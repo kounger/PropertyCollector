@@ -44,6 +44,8 @@ namespace PropertyCollector
     public class Properties
     {
         public Dictionary<string, Property> PropertyDictionary { get; } = new Dictionary<string, Property>();
+        List<string> baseClasses = new List<string>();
+
 
         /// <summary>
         /// This method collects all Property(s) from a type and adds them to the PropertyDictionary of this class.
@@ -51,8 +53,34 @@ namespace PropertyCollector
         /// typeFilePath is a path to the .cs-File of a type and can be used to extract property xml-summaries via Roslyn.
         /// Warning: Properties with the same canonical name will be replaced inside the PropertyDictionary.
         /// </summary>
-        public void addProperties(Type type, bool searchNestedClasses, object obj = null,  string typeFilePath = null)
+        public void addTypeProperties(Type type, bool searchNestedClasses, string typeFilePath = null)
         {
+            addPropertiesUniversal(type, searchNestedClasses, typeFilePath: typeFilePath);
+        }
+
+        /// <summary>
+        /// This method collects all Property(s) from an object and adds them to the PropertyDictionary of this class.
+        /// typeFilePath is a path to the .cs-File of a type and can be used to extract property xml-summaries via Roslyn.
+        /// All Property(s) will be linked with the object inside the PropertyDictionary of this class.
+        /// Warning: Properties with the same canonical name will be replaced inside the PropertyDictionary. 
+        /// Instead of adding another object of the same type to the PropertiesDictionary create a new Properties object!
+        /// </summary>
+        public void addObjectProperties(object obj, string typeFilePath = null)
+        {
+            addPropertiesUniversal(obj.GetType(), false, obj: obj, typeFilePath: typeFilePath);
+        }
+
+        /// <summary>
+        /// This method collects all Property(s) from a type and adds them to the PropertyDictionary of this class.
+        /// If searchNestedClasses is true, all properties of the nested types of the given type are added as well.
+        /// typeFilePath is a path to the .cs-File of a type and can be used to extract property xml-summaries via Roslyn.
+        /// Warning: Properties with the same canonical name will be replaced inside the PropertyDictionary.
+        /// </summary>
+        private void addPropertiesUniversal(Type type, bool searchNestedClasses, object obj = null,  string typeFilePath = null)
+        {
+            //If type is a nested type then collect all classes up to the base class:
+            collectBaseClasses(type);            
+            
             //Collect all properties of type:
             Dictionary<string, Property> typeProperties = new Dictionary<string, Property>();
             typeProperties = collectProperties(type, new List<string>(), searchNestedClasses, typeProperties);
@@ -103,7 +131,8 @@ namespace PropertyCollector
             {
                 string propertyName = propInfo.Name;
                 string propertyClassName = type.Name;
-                string propertyCanonicalName = SequenceToCallProperty(classesToCallNext, propertyName); //key for our dictionary
+                List<string> classesToCall = new List<string>(baseClasses.Concat(classesToCallNext)); 
+                string propertyCanonicalName = SequenceToCallProperty(classesToCall, propertyName); //key for our dictionary
 
                 typeProperties.Add(propertyCanonicalName, (new Property(propertyName, propertyClassName, propertyCanonicalName, propInfo)));
             }
@@ -124,6 +153,23 @@ namespace PropertyCollector
             return typeProperties;
         }
 
+        /// <summary>
+        /// This method collects all names of the base classes of a type.
+        /// Type TestCar.Car.Interior has Car and TestCar as base classes for example.
+        /// </summary>
+        private void collectBaseClasses(Type type)
+        {            
+            if (type.DeclaringType == null || baseClasses.Contains(type.DeclaringType.Name))
+            {
+                return;
+            }
+            else
+            {
+                baseClasses.Add(type.DeclaringType.Name);
+                collectBaseClasses(type.DeclaringType);               
+            }
+        }
+        
         ///<summary>
         ///Method returns a string which resembles the sequence to call a property.
         ///</summary>
@@ -184,14 +230,17 @@ namespace PropertyCollector
     }
 
     ///<summary>
-    ///This program uses reflection to extract all Properties from a type 
-    ///and all its nested types if wanted and saves them inside a dictionary.
-    ///These properties can then be called via their canonical name. If these
-    ///properties inside the dictionary are connected with an object the value 
-    ///can be extracted via the canonical name of the Property as well. If the
-    ///.cs-File of the type is available it can be used to extract the xml-summary
-    ///of a property via the use of Roslyn. The PropertyProcessor class includes 
-    ///methods to print all Properties and a method to write all properties to a csv file.
+    ///This program uses reflection to extract all Properties from a type or
+    ///an object. It can also extract properties of nested classes. These
+    ///properties will be saved in a dictionary from where they can be called
+    ///via their canonical name. If object properties are collected, the canonical
+    ///name can also be used to retrieve property values. If the .cs-File of the 
+    ///type is available it can be used to extract the xml-summary of a property 
+    ///via the use of Roslyn as well. The PropertyProcessor class includes methods 
+    ///to print all Properties and a method to write all properties to a csv file.
+    ///
+    /// All in all this program can be useful when working with classes with a large
+    /// number of properties.
     ///</summary>
     class PropertyCollectorReflection
     {
@@ -203,7 +252,7 @@ namespace PropertyCollector
             //Collect all properties from a Type:
             //////////////EDIT THIS//////////////            
             Type type = typeof(TestCar);
-            /////////////////////////////////////
+            /////////////////////////////////////            
 
             //There is an optional setting to collect all property xml-summaries via Roslyn.
             //For this it's necessary to have the .cs-File which contains the class of the Type. 
@@ -213,7 +262,9 @@ namespace PropertyCollector
             
             //Collect all properties:
             Properties properties = new Properties();
-            properties.addProperties(type, true, typeFilePath: typeFilePath);
+            ///////EDIT THIS (if needed)///////// 
+            properties.addTypeProperties(type, true, typeFilePath: typeFilePath);
+            /////////////////////////////////////
             var propertyDict = properties.PropertyDictionary;
             
             //Process all properties:
@@ -226,19 +277,18 @@ namespace PropertyCollector
             string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             propProcessor.CsvPropertyListGenerator(desktopPath);
 
-            //Test: Collect all properties of two types, getting property values by combining these Property(s) with objects, and getting their xml-summary.
+            //Test: Collect all properties of three objects and get their xml-summary.
             Console.WriteLine("\n" + "################################ TEST TWO ################################" + "\n");
-           
-            Type typeCar = typeof(TestCar.Car);
-            Type typeInterior = typeof(TestCar.Car.Interior);
 
             TestCar.Car car = new TestCar.Car("Audi", 123, true);
             TestCar.Car.Interior interior = new TestCar.Car.Interior(5, 2);
+            TestCar.Car.Exterior exterior = new TestCar.Car.Exterior(4);
 
             //Collect all properties
             Properties properties2 = new Properties();
-            properties2.addProperties(typeCar, false, obj: car,typeFilePath: typeFilePath);
-            properties2.addProperties(typeInterior, false, obj: interior, typeFilePath: typeFilePath);
+            properties2.addObjectProperties(car, typeFilePath: typeFilePath);
+            properties2.addObjectProperties(interior, typeFilePath: typeFilePath);
+            properties2.addObjectProperties(exterior, typeFilePath: typeFilePath);
             var propertyDict2 = properties2.PropertyDictionary;
 
             //Process all properties:
@@ -252,7 +302,7 @@ namespace PropertyCollector
 
             Console.WriteLine("\n" + "################ GET PROPERTY VALUE VIA ITS CANONICAL NAME ################" + "\n");
 
-            Property numberSeats = propertyDict2["Interior.NumberSeats"];
+            Property numberSeats = propertyDict2["TestCar.Car.Interior.NumberSeats"];
             Console.WriteLine(numberSeats.PropertyName + " " + numberSeats.PropertyValue);
         }
     }

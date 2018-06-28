@@ -75,6 +75,23 @@
 
                 public string CurrentDriver { get; set; } = null;
             }
+
+            /// <summary>
+            /// Internal Class Exterior
+            /// </summary>
+            public class Exterior
+            {
+                public Exterior(int numberDoors)
+                {
+                    this.NumberDoors = numberDoors;
+                }
+
+                /// <summary>
+                /// This is the summary for property NumberDoors.
+                /// </summary>
+                public int NumberDoors
+                { get; set;}
+            }
         }
     }
 }
