@@ -25,7 +25,7 @@ namespace PropertyCollector
                 }
                 else
                 {
-                    return null;
+                    throw new System.NullReferenceException("PropertyObject is null.");
                 }
                
             }
